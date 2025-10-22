@@ -7,6 +7,33 @@ function removeAccentMarks(text: string): string {
 	return text.replace(/[́̀]/g, "");
 }
 
+// Rate limiter to enforce API rate limits
+class RateLimiter {
+	private timestamps: number[] = [];
+
+	constructor(
+		private maxRequests: number,
+		private windowMs: number,
+	) {}
+
+	async waitForSlot(): Promise<void> {
+		const now = Date.now();
+		// Remove timestamps outside the window
+		this.timestamps = this.timestamps.filter((ts) => now - ts < this.windowMs);
+
+		if (this.timestamps.length >= this.maxRequests) {
+			const oldestTimestamp = this.timestamps[0];
+			const waitTime = this.windowMs - (now - oldestTimestamp);
+			if (waitTime > 0) {
+				await new Promise((resolve) => setTimeout(resolve, waitTime));
+				return this.waitForSlot(); // Retry after waiting
+			}
+		}
+
+		this.timestamps.push(Date.now());
+	}
+}
+
 export async function POST(request: Request) {
 	try {
 		const { csvContent } = await request.json();
@@ -55,6 +82,9 @@ export async function POST(request: Request) {
 
 					sendProgress(`Found ${verbRows.length} verbs to conjugate...`, 20);
 
+					// Initialize rate limiter (10 requests per minute)
+					const rateLimiter = new RateLimiter(10, 60000);
+
 					// Process verbs in parallel batches for speed
 					const BATCH_SIZE = 8;
 					const batches: (typeof verbRows)[] = [];
@@ -63,7 +93,7 @@ export async function POST(request: Request) {
 						batches.push(verbRows.slice(i, i + BATCH_SIZE));
 					}
 
-					const conjugatedResponses: string[] = [];
+					let conjugatedResponses: string[] = [];
 
 					for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
 						const batch = batches[batchIndex];
@@ -75,46 +105,62 @@ export async function POST(request: Request) {
 						);
 
 						// Process all verbs in the batch in parallel
-						const batchPromises = batch.map((row) =>
-							generateText({
+						const batchPromises = batch.map(async (row) => {
+							await rateLimiter.waitForSlot();
+							return generateText({
 								model: google("gemini-2.5-flash"),
-								prompt: `You are a Russian language expert. Process the following Russian infinitive form of a verb (and English translation) and generate a new list of the conjugations of the verb. Your goal is to conjugate the verb (perhaps including both perfective and imperfective forms if provided) and add an appropriate adjective and noun after the verb (in the correct form).
+								prompt: `
+                  You are a Russian language expert. Process the following Russian infinitive form of a verb (and English translation) and generate a new list of the conjugations of the verb. Your goal is to conjugate the verb (perhaps including both perfective and imperfective forms if provided) and add an appropriate adjective and noun after the verb (in the correct form).
 
-          INFINITIVE FORM: ${row.russian} (translation: ${row.english})
+                  INFINITIVE FORM: ${row.russian} (translation: ${row.english})
 
-          INSTRUCTIONS: Generate "I", "you", "he", "we", "you (plural)", "they" conjugated forms with a natural, realistic adjective and noun after the verb. Make sure to note (pf) if perfective and (impf) if imperfective.
+                  INSTRUCTIONS: Generate "I", "you", "he", "we", "you (plural)", "they" conjugated forms with a natural, realistic adjective and noun after the verb. Make sure to note (pf) if perfective and (impf) if imperfective.
 
-          VERB CONJUGATION RULES:
-          - Parse case requirements from input: (кому), (что), (кого), (с кем), etc.
-          - Make sure you use nouns that are appropriate for the case requirements
-            - E.g. If (кому) - use PERSON nouns: друг, мама, человек
-            - E.g. If (что) - use OBJECT nouns: дом, работа, дело, место, окно
-            - E.g. If both (кому/что) - alternate between people and objects
-          - Generate NATURAL nouns and adjectives matching the verb that sound like native speakers would say
-          - Use proper grammatical case agreement
-          - Avoid nonsensical combinations
-          - You should use a range of nouns (in all genders) and adjectives (make sure not to use the same for each conjugation)
-          - You should use basic nouns and adjectives that are appropriate for the verb, do not use anything too complex or obscure
+                  ---
+                  **STRICT RULES:**
 
-          EXAMPLES:
-          GOOD: "я читаю новую книгу" (I read a new book)
-          BAD: "я читаю нового друга" (I read a new friend)
+                  1.  **VOCABULARY:** You **MUST ONLY** use nouns and adjectives from the "APPROVED VOCABULARY LISTS" provided below. Do not use *any* word that is not on these lists.
+                  2.  **CASE:** You must obey the case requirements from the infinitive (e.g., (кому), (что), (кого)).
+                      * If (кому) or (кого) -> Use a noun from the **APPROVED PEOPLE** list.
+                      * If (что) -> Use a noun from the **APPROVED OBJECTS & CONCEPTS** list.
+                  3.  **AGREEMENT:** You must use proper grammatical case and gender agreement for the noun and its adjective.
+                  4.  **VARIETY:** You **MUST** use a *different* adjective/noun combination for each of the 6 conjugation lines. Do not repeat the same phrase.
+                  5.  **SENSE:** Do not generate nonsensical combinations.
 
-          GOOD: "я изменяю старому другу" (I cheat on an old friend)
-          BAD: "я изменяю старому дому" (I cheat on an old house)
+                  ---
+                  **APPROVED VOCABULARY LISTS:**
 
-          GOOD EXAMPLES OF NOUNS AND ADJECTIVES (not exhaustive):
-          People: друг, мама, человек + хороший, старый, молодой, красивый, русский
-          Objects: дом, работа, дело, место, окно, слово, время + большой, новый, маленький, хороший, белый, чёрный
+                  **APPROVED PEOPLE (for кому, кого, etc.):**
+                  * Nouns: друг, мама, человек, брат, сестра, учитель, студент, врач
+                  * Adjectives: хороший, старый, молодой, красивый, русский, новый, добрый, умный
 
-          OUTPUT FORMAT:
-          Return ONLY the final CSV content in this exact format:
-          "russian_text","english_translation"
-          "russian_text","english_translation"
-          ...
-          `,
-							}),
-						);
+                  **APPROVED OBJECTS & CONCEPTS (for что, etc.):**
+                  * Nouns: дом, работа, дело, место, окно, слово, время, книга, письмо, машина, стол, стул, комната
+                  * Adjectives: большой, новый, маленький, хороший, белый, чёрный, интересный, важный, последний, старый, красивый
+
+                  ---
+                  **EXAMPLES (Demonstrating the rules):**
+
+                  * Input: "читать (что)"
+                  * GOOD: "я читаю новую книгу" (Uses "новый" and "книга" from the approved lists for "что")
+                  * BAD: "я читаю нового друга" (Uses a "PERSON" noun for "что")
+                  * BAD: "я читаю интересную статью" (BAD because "статья" is *not* on the approved list)
+
+                    * Input: "изменять (кому)"
+                  * GOOD: "я изменяю старому другу" (Uses "старый" and "друг" from the approved lists for "кому")
+                  * BAD: "я изменяю старому дому" (Uses an "OBJECT" noun for "кому")
+
+                  ---
+                  **OUTPUT FORMAT:**
+                  **Return ONLY the final CSV conten-t.** Your response **MUST** start immediately with the first CSV line (e.g., "я...").
+                  Do not include *any* introductory text, preamble, or markdown formatting.
+                  Return ONLY the final CSV content.
+                  "russian_text","english_translation"
+                  "russian_text","english_translation"
+                  ...
+              `,
+							});
+						});
 
 						const batchResults = await Promise.all(batchPromises);
 						conjugatedResponses.push(
@@ -123,6 +169,10 @@ export async function POST(request: Request) {
 					}
 
 					sendProgress("Processing AI responses...", 90);
+
+					conjugatedResponses = conjugatedResponses.filter(
+						(response) => !response.includes("russian_text"), // Ensure we only get the CSV content
+					);
 
 					// Parse all AI responses to extract CSV content
 					const allLines: string[] = [];

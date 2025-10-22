@@ -82,7 +82,7 @@ export default function Home() {
 		: 0;
 
 	return (
-		<main className="min-h-screen bg-black text-white p-8">
+		<main className="min-h-screen p-8">
 			<div className="max-w-4xl mx-auto space-y-8">
 				{/* Header */}
 				<div className="text-center space-y-4">
@@ -95,12 +95,12 @@ export default function Home() {
 				</div>
 
 				{/* Upload Card */}
-				<Card className="bg-black border border-gray-800">
+				<Card className=" border border-gray-200">
 					<CardHeader>
-						<CardTitle className="text-white">Upload CSV File</CardTitle>
+						<CardTitle className="">Upload CSV File</CardTitle>
 						<CardDescription className="text-gray-400">
 							Select a CSV file with Russian vocabulary in the format:{" "}
-							<code className="bg-gray-900 px-2 py-1 rounded text-sm">
+							<code className="bg-gray-100 px-2 py-1 rounded text-sm text-green-600">
 								"russian","english"
 							</code>
 						</CardDescription>
@@ -137,7 +137,7 @@ export default function Home() {
 							<Button
 								onClick={handleProcess}
 								disabled={isProcessing}
-								className="w-full bg-white text-black hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+								className="w-full hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
 							>
 								{isProcessing ? (
 									<div className="flex items-center gap-2">
@@ -217,10 +217,9 @@ export default function Home() {
 					</Card>
 				)}
 
-				{/* Example */}
-				<Card className="bg-black border border-gray-800">
+				<Card className="border border-gray-200">
 					<CardHeader>
-						<CardTitle className="text-white">Example Input Format</CardTitle>
+						<CardTitle className="">Example Input Format</CardTitle>
 						<CardDescription className="text-gray-400">
 							Your CSV should follow this format:
 						</CardDescription>
@@ -229,9 +228,9 @@ export default function Home() {
 						<div className="bg-gray-900 p-6 rounded-lg border border-gray-800">
 							<pre className="text-sm text-gray-300 overflow-x-auto font-mono leading-relaxed">
 								{`"громкий","loud"
-"по-другому","differently"
-"узнавать/узнать","to find out"
-"целовать/поцеловать","to kiss"`}
+                  "по-другому","differently"
+                  "узнавать/узнать","to find out"
+                  "целовать/поцеловать","to kiss"`}
 							</pre>
 						</div>
 					</CardContent>

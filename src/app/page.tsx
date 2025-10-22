@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
 import {
 	Card,
 	CardDescription,
@@ -9,7 +8,7 @@ import {
 
 export default function Home() {
 	return (
-		<main className="min-h-screen bg-black text-white flex pt-40 justify-start">
+		<main className="min-h-screen flex pt-40 justify-start">
 			<div className="max-w-2xl mx-auto px-6 space-y-8">
 				<h1 className="text-5xl sm:text-6xl font-bold tracking-tight">
 					Tika's Russian 🇷🇺
@@ -21,7 +20,7 @@ export default function Home() {
 				</p>
 				<div className="space-y-4">
 					<Link href="/conjugator">
-						<Card>
+						<Card className="hover:bg-gray-100 transition-colors duration-300">
 							<CardHeader>
 								<CardTitle>Conjugator (Make Better Flashcards)</CardTitle>
 								<CardDescription>
